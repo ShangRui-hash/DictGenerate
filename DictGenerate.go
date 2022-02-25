@@ -10,10 +10,6 @@ import (
 	"DictGenerate/inter/table"
 	"DictGenerate/util"
 	"fmt"
-	"github.com/ernestosuarez/itertools"
-	"github.com/nosixtools/solarlunar"
-	"github.com/peterh/liner"
-	"github.com/urfave/cli"
 	"os"
 	"regexp"
 	"runtime"
@@ -21,7 +17,46 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ernestosuarez/itertools"
+	"github.com/nosixtools/solarlunar"
+	"github.com/peterh/liner"
+	"github.com/urfave/cli"
 )
+
+func generateFirstOrder(mixPassList, combinationList []string) []string {
+	firstOrder := make([]string, 0, len(mixPassList)+len(combinationList))
+	firstOrder = append(firstOrder, mixPassList...)
+	firstOrder = append(firstOrder, combinationList...)
+	firstOrder = payload.SliceUnique(firstOrder)
+	return firstOrder
+}
+
+func generateSecondOrder(mixPassList, combinationList []string) []string {
+	secondOrder := make([]string, 0, len(mixPassList)*2)
+	for v := range itertools.CombinationsStr(mixPassList, 2) {
+		secondOrder = append(secondOrder, strings.Join(v, ""))
+	}
+	secondOrder = append(secondOrder, combinationList...)
+	return secondOrder
+}
+
+func generateThreeOrder(mixPassList, combinationList []string) []string {
+	threeOrder := make([]string, 0, len(mixPassList)*2)
+	for v := range itertools.CombinationsStr(mixPassList, 3) {
+		threeOrder = append(threeOrder, strings.Join(v, ""))
+	}
+	threeOrder = append(threeOrder, combinationList...)
+	return threeOrder
+}
+
+func generateThirdOrder(mixPassList, combinationList []string) []string {
+	thirdOrder := generateFirstOrder(mixPassList, combinationList)
+	thirdOrder = append(thirdOrder, generateSecondOrder(mixPassList, combinationList)...)
+	thirdOrder = append(thirdOrder, generateThreeOrder(mixPassList, combinationList)...)
+	thirdOrder = payload.SliceUnique(thirdOrder)
+	return thirdOrder
+}
 
 var (
 	reloadFn = func(c *cli.Context) error {
@@ -385,16 +420,12 @@ func main() {
 				// 并发生成
 				logger.Info("Dict generate..")
 				wg := sync.WaitGroup{}
-				wg.Add(3)
 
 				// 一阶
+				wg.Add(1)
 				go func() {
 					file := fmt.Sprintf("%s_%s", fileName, "easy")
-
-					firstOrder := make([]string, 0, len(mixPassList)+len(combinationList))
-					firstOrder = append(firstOrder, mixPassList...)
-					firstOrder = append(firstOrder, combinationList...)
-					firstOrder = payload.SliceUnique(firstOrder)
+					firstOrder := generateFirstOrder(mixPassList, combinationList)
 					if filePath, err := DictOutput(firstOrder, file); err != nil {
 						logger.Errorf("easy generate fail: %s", err)
 					} else {
@@ -404,15 +435,10 @@ func main() {
 				}()
 
 				// 二阶
+				wg.Add(1)
 				go func() {
 					file := fmt.Sprintf("%s_%s", fileName, "medium")
-
-					secondOrder := make([]string, 0, len(mixPassList)*2)
-					for v := range itertools.CombinationsStr(mixPassList, 2) {
-						secondOrder = append(secondOrder, strings.Join(v, ""))
-					}
-
-					secondOrder = append(secondOrder, combinationList...)
+					secondOrder := generateSecondOrder(mixPassList, combinationList)
 					if filePath, err := DictOutput(secondOrder, file); err != nil {
 						logger.Errorf("medium generate fail: %s", err)
 					} else {
@@ -422,15 +448,10 @@ func main() {
 				}()
 
 				// 三阶
+				wg.Add(1)
 				go func() {
 					file := fmt.Sprintf("%s_%s", fileName, "large")
-
-					threeOrder := make([]string, 0, len(mixPassList)*2)
-					for v := range itertools.CombinationsStr(mixPassList, 3) {
-						threeOrder = append(threeOrder, strings.Join(v, ""))
-					}
-
-					threeOrder = append(threeOrder, combinationList...)
+					threeOrder := generateThreeOrder(mixPassList, combinationList)
 					if filePath, err := DictOutput(threeOrder, file); err != nil {
 						logger.Errorf("large generate fail: %s", err)
 					} else {
@@ -438,7 +459,18 @@ func main() {
 					}
 					wg.Done()
 				}()
-
+				// 四阶
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					file := fmt.Sprintf("%s_%s", fileName, "all")
+					thirdOrder := generateThirdOrder(mixPassList, combinationList)
+					if filePath, err := DictOutput(thirdOrder, file); err != nil {
+						logger.Errorf("large generate fail: %s", err)
+					} else {
+						logger.Infof("large dict filename: %s", filePath)
+					}
+				}()
 				wg.Wait()
 
 				logger.Infof("OK Generate completed!")
